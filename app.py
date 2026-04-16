@@ -1,9 +1,10 @@
 from flask import Flask, render_template, request, redirect, session
 import sqlite3
+import os
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.secret_key = 'chave_super_secreta_123'
+app.secret_key = os.environ.get('SECRET_KEY', 'dev_key_segura')
 
 # Criar banco
 def criar_banco():
@@ -12,7 +13,7 @@ def criar_banco():
     c.execute('''
         CREATE TABLE IF NOT EXISTS usuarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE,
             senha TEXT NOT NULL
         )
     ''')
@@ -29,8 +30,11 @@ def home():
 # Login
 @app.route('/login', methods=['POST'])
 def fazer_login():
-    email = request.form['email']
-    senha = request.form['senha']
+    email = request.form.get('email')
+    senha = request.form.get('senha')
+
+    if not email or not senha:
+        return "Preencha todos os campos"
 
     conn = sqlite3.connect('database.db')
     c = conn.cursor()
@@ -48,12 +52,24 @@ def fazer_login():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        email = request.form['email']
-        senha = generate_password_hash(request.form['senha'])
+        email = request.form.get('email')
+        senha = request.form.get('senha')
+
+        if not email or not senha:
+            return "Preencha todos os campos"
 
         conn = sqlite3.connect('database.db')
         c = conn.cursor()
-        c.execute("INSERT INTO usuarios (email, senha) VALUES (?, ?)", (email, senha))
+
+        # Verificar se já existe
+        c.execute("SELECT * FROM usuarios WHERE email=?", (email,))
+        if c.fetchone():
+            conn.close()
+            return "Email já cadastrado"
+
+        senha_hash = generate_password_hash(senha)
+
+        c.execute("INSERT INTO usuarios (email, senha) VALUES (?, ?)", (email, senha_hash))
         conn.commit()
         conn.close()
 
@@ -74,6 +90,6 @@ def logout():
     session.pop('usuario', None)
     return redirect('/')
 
-# 🔥 IMPORTANTE PRA RODAR LOCAL
+# Rodar localmente
 if __name__ == '__main__':
     app.run(debug=True)
